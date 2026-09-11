@@ -1,0 +1,86 @@
+/* The accent is substituted by ui/stylesheet.py before Qt sees this file.
+
+   Note there is no font-size on #lyricLine: a stylesheet font-size wins
+   over setFont(), which would freeze the scale animation solid. Line sizes
+   live in ui/animations.py (LINE_PX, NORMAL_SCALE, CURRENT_SCALE). Colours
+   stay here. */
+
+QWidget {
+    color: #e8eaf0;
+    font-family: "Inter", "Ubuntu", "Segoe UI", sans-serif;
+}
+
+/* Surfaces are translucent so the blurred album art reads through them. */
+
+#header {
+    background: rgba(12, 14, 19, 0.55);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+#trackTitle {
+    font-size: 19px;
+    font-weight: 600;
+    color: #f4f6fb;
+}
+
+#trackArtist {
+    font-size: 13px;
+    color: #aab2c5;
+}
+
+/* The scroll area, its viewport and the column inside it all have to be
+   explicitly transparent for the backdrop to show through. */
+#lyricsScroll, #lyricsScroll > QWidget > QWidget, #lyricsBody, #lyricPad {
+    background: transparent;
+}
+
+/* Lyric lines ------------------------------------------------------------ */
+
+#lyricLine {
+    font-weight: 500;
+    background: transparent;
+}
+
+#lyricLine[state="future"] {
+    color: rgba(233, 237, 247, 0.42);
+}
+
+#lyricLine[state="past"] {
+    color: rgba(233, 237, 247, 0.26);
+}
+
+#lyricLine[state="current"] {
+    color: @ACCENT@;
+    font-weight: 700;
+}
+
+/* Unsynced lyrics have no current line, so they are all rendered plainly. */
+#lyricLine[state="plain"] {
+    color: rgba(233, 237, 247, 0.82);
+}
+
+#placeholder {
+    font-size: 15px;
+    color: rgba(233, 237, 247, 0.5);
+    background: transparent;
+}
+
+/* Status bar ------------------------------------------------------------- */
+
+#status {
+    background: rgba(12, 14, 19, 0.55);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+#statusLeft, #statusRight {
+    font-size: 12px;
+    color: #99a1b5;
+}
+
+#sourceBadge {
+    font-size: 11px;
+    color: @ACCENT@;
+    background: rgba(255, 255, 255, 0.07);
+    border-radius: 9px;
+    padding: 2px 9px;
+}

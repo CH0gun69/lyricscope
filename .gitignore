@@ -1,0 +1,25 @@
+# Build output — the plugin is compiled per-machine against that machine's
+# GTK, Python and DeaDBeeF headers, so a committed .so would be wrong for
+# almost everyone who cloned it.
+*.o
+*.so
+*.so.*
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtualenvs. Not needed to build or run the plugin (it uses the system
+# interpreter plus python3-mutagen); only ever used for running the tests.
+.venv/
+venv/
+
+# The archived PySide6 app is source and IS tracked — only its build junk
+# is ignored, which the patterns above already cover.
+
+# Editor / tooling
+.claude/
+.vscode/
+.idea/
+*.swp

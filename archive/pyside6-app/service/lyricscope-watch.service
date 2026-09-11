@@ -1,0 +1,19 @@
+[Unit]
+Description=Launch LyricScope alongside DeaDBeeF
+Documentation=file://@APP_DIR@/../README.md
+
+[Service]
+Type=simple
+# System python: the watcher is stdlib-only. The venv interpreter is for
+# the app itself, which the watcher starts with the right cwd and env.
+ExecStart=/usr/bin/python3 @WATCHER@
+Restart=always
+RestartSec=5
+
+[Install]
+# Not graphical-session.target: on Cinnamon that target is never activated
+# (verified — `systemctl --user is-active graphical-session.target` reports
+# inactive on this session while default.target is active), so a unit wanted
+# by it would simply never start. default.target comes up with the user
+# manager at login and goes away at logout, which is the lifetime wanted.
+WantedBy=default.target

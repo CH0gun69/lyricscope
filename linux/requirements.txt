@@ -1,0 +1,15 @@
+# Runtime dependency of the backend the plugin embeds.
+#
+# On Debian/Mint/Ubuntu prefer the distro package -- `apt install
+# python3-mutagen` -- because the plugin runs the *system* interpreter and
+# reads the system site-packages. A pip install into a virtualenv will not
+# be visible to it unless you also point lyricscope.python_home at it.
+#
+# Reads lyrics embedded in a track's own tags (LYRICS/USLT/UNSYNCEDLYRICS).
+# DeaDBeeF can report those over its CLI too, but title formatting flattens
+# a multi-line value onto one line, so a 38-line lyric comes back mangled --
+# the tags have to be read from the file directly.
+mutagen>=1.46
+
+# Tests only.
+pytest>=8

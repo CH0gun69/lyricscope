@@ -1,0 +1,13 @@
+PySide6==6.11.1
+PySide6_Addons==6.11.1
+PySide6_Essentials==6.11.1
+shiboken6==6.11.1
+# Reads lyrics embedded in a track's own tags (LYRICS/USLT/UNSYNCEDLYRICS).
+# DeaDBeeF can report those over its CLI too, but title formatting flattens
+# a multi-line value onto one line, so a 38-line lyric came back mangled --
+# the tags have to be read from the file directly.
+mutagen==1.47.0
+# Blurs cover art for the backdrop. Qt's QGraphicsBlurEffect measures the
+# same (~29ms) but has to go through a QGraphicsScene to yield a pixmap and
+# bleeds the scene background in at the edges.
+Pillow==12.3.0
