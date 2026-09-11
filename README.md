@@ -86,11 +86,16 @@ and `DATADIR=` if you want them elsewhere.
 `lyricscope`; DeaDBeeF's layout decides where widgets go, and a fresh
 profile has no idea this one exists. After restarting:
 
-1. **View → Design mode** (tick it).
-2. Right-click the area you want to replace, or an empty tab bar.
-3. **Replace with… → LyricScope**, or **Insert → LyricScope** to add it as
-   a new tab in an existing tab container.
-4. **View → Design mode** again to turn it off.
+1. **View → Design mode** (tick it). Widget areas turn blue.
+2. Right-click the area you want the panel to occupy.
+3. **Replace with… → LyricScope** — it is at the *bottom* of that submenu,
+   below all the built-in widget types.
+4. **View → Design mode** again to untick it.
+
+To put it in its own tab rather than replacing something, right-click the
+tab bar of an existing tabs container first and choose **Add New Tab**,
+then do **Replace with… → LyricScope** inside the new empty tab.
+**Rename Tab** on the same menu sets its label.
 
 Design mode must be off for normal use — while it is on, right-clicking the
 panel gives you DeaDBeeF's layout menu instead of LyricScope's settings.
