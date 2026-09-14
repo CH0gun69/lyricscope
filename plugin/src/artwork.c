@@ -17,6 +17,7 @@
 
 #include "animations.h"
 #include "log.h"
+#include "palette.h"
 #include "settings.h"
 #include "theme.h"
 
@@ -63,6 +64,8 @@ void ls_artwork_init(void) {
            artwork_plugin->plugin.plugin.version_major,
            artwork_plugin->plugin.plugin.version_minor);
 }
+
+ddb_artwork_plugin_t *ls_artwork_plugin(void) { return artwork_plugin; }
 
 /* -- blur ------------------------------------------------------------- */
 
@@ -183,7 +186,8 @@ static void surface_spread(cairo_surface_t *surface, int spread[3]) {
     }
 }
 
-static cairo_surface_t *build_backdrop(const char *filename) {
+static cairo_surface_t *build_backdrop(const char *filename,
+                                       const char *track_path) {
     GError *error = NULL;
     GdkPixbuf *full = gdk_pixbuf_new_from_file(filename, &error);
     if (!full) {
@@ -200,6 +204,26 @@ static cairo_surface_t *build_backdrop(const char *filename) {
     g_object_unref(full);
     if (!tiny) {
         return NULL;
+    }
+
+    /* Colours come off the cover here, before the blur, and before the
+     * pixbuf is thrown away.
+     *
+     * Before the blur because a blur pulls every tone toward the image's
+     * average — the darkest and lightest bands converge, and a gradient
+     * built from them would be three shades of the same mud. Here, because
+     * this is the one place in the plugin where a decoded cover already
+     * exists: the spectrum panel wants the same three tones and would
+     * otherwise have to fetch and decode the image a second time. */
+    /* Keyed by the *track*, not by `filename`. filename is the cover image
+     * in DeaDBeeF's cache, and nothing else in the plugin ever knows that
+     * name — the spectrum panel asks by the track URI it gets from the
+     * streamer, so storing it under the image path is a cache that can
+     * never be hit. */
+    if (track_path) {
+        LsPalette palette;
+        ls_palette_from_pixbuf(tiny, &palette);
+        ls_palette_cache_put(track_path, &palette);
     }
 
     /* The configured radius is expressed at the build size, so it is
@@ -271,7 +295,7 @@ static gboolean install_backdrop(gpointer data) {
         return G_SOURCE_REMOVE;
     }
 
-    cairo_surface_t *surface = build_backdrop(ready->filename);
+    cairo_surface_t *surface = build_backdrop(ready->filename, art->path);
     if (surface) {
         if (art->previous) {
             cairo_surface_destroy(art->previous);

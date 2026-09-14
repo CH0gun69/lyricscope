@@ -28,7 +28,7 @@ LDFLAGS += -shared
 LIBS     = $(PKG_LIBS) $(PY_LIBS) -lm
 
 OBJS = src/plugin.o src/panel.o src/artwork.o src/pybridge.o \
-       src/settings.o src/config_dialog.o
+       src/settings.o src/config_dialog.o src/spectrum.o src/palette.o
 
 all: $(PLUGIN)
 

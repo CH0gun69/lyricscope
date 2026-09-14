@@ -15,6 +15,7 @@
 #include "panel.h"
 #include "pybridge.h"
 #include "settings.h"
+#include "spectrum.h"
 
 #include <deadbeef/deadbeef.h>
 #include <deadbeef/gtkui_api.h>
@@ -39,6 +40,16 @@ static ddb_gtkui_widget_t *lyricscope_create(void) {
     /* A panel added part-way through a song should fill in now rather than
      * sit empty until the next track change. */
     ls_panel_sync_now(panel);
+    return widget;
+}
+
+static ddb_gtkui_widget_t *lyricscope_spectrum_create(void) {
+    LsSpectrum *spectrum = ls_spectrum_new();
+    if (!spectrum) {
+        return NULL;
+    }
+    ddb_gtkui_widget_t *widget = ls_spectrum_as_widget(spectrum);
+    gtkui_plugin->w_override_signals(widget->widget, widget);
     return widget;
 }
 
@@ -75,13 +86,20 @@ static int lyricscope_connect(void) {
     ls_artwork_init();
     gtkui_plugin->w_reg_widget("LyricScope", 0, lyricscope_create, "lyricscope",
                                NULL);
-    LS_LOG("registered widget type \"lyricscope\"");
+    /* A second, separate widget type. DeaDBeeF's own Spectrum widget is
+     * untouched and still available; this one sits alongside it. */
+    gtkui_plugin->w_reg_widget("LyricScope Spectrum", 0,
+                               lyricscope_spectrum_create,
+                               "lyricscope_spectrum", NULL);
+    LS_LOG("registered widget types \"lyricscope\" and "
+           "\"lyricscope_spectrum\"");
     return 0;
 }
 
 static int lyricscope_disconnect(void) {
     if (gtkui_plugin) {
         gtkui_plugin->w_unreg_widget("lyricscope");
+        gtkui_plugin->w_unreg_widget("lyricscope_spectrum");
     }
     return 0;
 }
@@ -94,7 +112,11 @@ DB_plugin_t *ddb_lyricscope_gtk3_load(DB_functions_t *api) {
 
 static DB_misc_t plugin = {
     .plugin.api_vmajor = 1,
-    .plugin.api_vminor = 5,
+    /* 15, not 5: vis_spectrum_listen2 only exists in the API struct from
+     * level 15 onward. Declaring 5 while calling it would advertise
+     * compatibility with players where that field is a different function
+     * — or past the end of the struct they were built with. */
+    .plugin.api_vminor = 15,
     .plugin.version_major = 1,
     .plugin.version_minor = 0,
     .plugin.type = DB_PLUGIN_MISC,

@@ -1,7 +1,12 @@
 #ifndef LS_ARTWORK_H
 #define LS_ARTWORK_H
 
+/* deadbeef.h first: artwork.h uses ddb_playItem_t and DB_misc_t without
+ * declaring them, so the alphabetical order fails to compile. Same shape
+ * as the gtk.h/gtkui_api.h ordering trap in panel.h. */
 #include <deadbeef/deadbeef.h>
+
+#include <deadbeef/artwork.h>
 #include <gtk/gtk.h>
 
 /* Blurred cover art behind the lyrics, cross-fading on track change.
@@ -40,6 +45,10 @@ void ls_artwork_load(LsArtwork *art, DB_playItem_t *track);
 
 /* Look up DeaDBeeF's artwork plugin once, at plugin start. */
 void ls_artwork_init(void);
+
+/* The plugin found by ls_artwork_init, or NULL. Shared so a second panel
+ * reuses the one lookup rather than repeating it. */
+ddb_artwork_plugin_t *ls_artwork_plugin(void);
 
 /* Drop the "already built for this track" memo so the next load rebuilds
  * the surface. The blur is baked in, so a radius change needs this. */
