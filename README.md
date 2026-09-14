@@ -153,6 +153,22 @@ with DeaDBeeF closed.
 | `lyricscope.alignment` | `1` | `0` left, `1` centre, `2` right. |
 | `lyricscope.python_home` | *(unset)* | Directory containing `core/`. Unset means `$XDG_DATA_HOME/lyricscope`. Point it at `<clone>/linux` to run from a checkout without `make install`. |
 
+### Debugging the backdrop
+
+Set `LS_DEBUG_BLUR=1` in the environment before starting DeaDBeeF and the
+plugin reports what it builds and what it paints:
+
+```bash
+LS_DEBUG_BLUR=1 deadbeef
+```
+
+Each build logs its source, radius and the resulting per-channel colour
+spread, and dumps the surface to `/tmp/lyricscope-backdrop-NNN.png`. Each
+draw logs the cross-fade position and the spread of the surface being
+painted, once a second and immediately on a swap. A flat dump means the
+blur is wrong; a varied surface drawn onto a flat panel means the drawing
+is. Off — and free — when the variable is unset.
+
 Unset keys fall back to the compiled-in defaults in
 `plugin/src/animations.h` and `plugin/src/theme.h`, so those two headers
 remain the answer to "what does this look like out of the box".

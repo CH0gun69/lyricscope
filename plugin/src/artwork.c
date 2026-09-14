@@ -109,6 +109,68 @@ static void blur_pixbuf(GdkPixbuf *pixbuf, int radius) {
     free(scratch);
 }
 
+/* -- LS_DEBUG_BLUR ----------------------------------------------------- *
+ *
+ * The backdrop was once seen painting a flat wash of a cover's average
+ * colour instead of the blur of it, in a player that had been running for
+ * a while — and it came back correct on restart, with the same track, the
+ * same cover and the same radius. That is a state bug, and state bugs are
+ * not findable after the fact: by the time it is noticed, the interesting
+ * moment is hours gone.
+ *
+ * So this reports the two things that tell the halves apart. Every build
+ * logs what went in and what came out, and dumps the surface to a file,
+ * which settles whether the *built* image is blurred. Every draw logs the
+ * fade and the spread of the surface being painted, which settles whether
+ * a good surface is being painted badly. A flat dump means the build is
+ * wrong; a varied surface drawn onto a flat panel means the draw is.
+ *
+ * Off unless LS_DEBUG_BLUR is set in the environment, and the getenv is
+ * cached — the draw path runs per frame and this must cost nothing when
+ * it is off. */
+static int blur_debug(void) {
+    static int enabled = -1;
+    if (enabled < 0) {
+        enabled = getenv("LS_DEBUG_BLUR") ? 1 : 0;
+    }
+    return enabled;
+}
+
+/* Per-channel min-to-max across a surface. Flat means one colour, which
+ * is the symptom being hunted; anything above a few units per channel is
+ * a blur that survived. ARGB32 is premultiplied BGRA in memory, and the
+ * backdrop is opaque, so the three channels read out as B, G, R. */
+static void surface_spread(cairo_surface_t *surface, int spread[3]) {
+    spread[0] = spread[1] = spread[2] = -1;
+    if (!surface ||
+        cairo_surface_get_type(surface) != CAIRO_SURFACE_TYPE_IMAGE ||
+        cairo_image_surface_get_format(surface) != CAIRO_FORMAT_ARGB32) {
+        return;
+    }
+    cairo_surface_flush(surface);
+    const unsigned char *data = cairo_image_surface_get_data(surface);
+    if (!data) {
+        return;
+    }
+    const int width = cairo_image_surface_get_width(surface);
+    const int height = cairo_image_surface_get_height(surface);
+    const int stride = cairo_image_surface_get_stride(surface);
+    int lo[3] = {255, 255, 255}, hi[3] = {0, 0, 0};
+    for (int y = 0; y < height; y++) {
+        const unsigned char *row = data + (gsize)y * stride;
+        for (int x = 0; x < width; x++) {
+            for (int c = 0; c < 3; c++) {
+                const unsigned char v = row[x * 4 + c];
+                if (v < lo[c]) lo[c] = v;
+                if (v > hi[c]) hi[c] = v;
+            }
+        }
+    }
+    for (int c = 0; c < 3; c++) {
+        spread[c] = hi[c] - lo[c];
+    }
+}
+
 static cairo_surface_t *build_backdrop(const char *filename) {
     GError *error = NULL;
     GdkPixbuf *full = gdk_pixbuf_new_from_file(filename, &error);
@@ -153,6 +215,25 @@ static cairo_surface_t *build_backdrop(const char *filename) {
     cairo_destroy(cr);
     g_object_unref(scaled);
     cairo_surface_flush(surface);
+
+    if (blur_debug()) {
+        static int build = 0;
+        int spread[3];
+        surface_spread(surface, spread);
+        /* The counter is in the filename rather than one file overwritten
+         * each time, because "it went flat after a while" is a claim about
+         * a sequence of builds, and only keeping them all can show which
+         * one turned. */
+        char *dump = g_strdup_printf("%s/lyricscope-backdrop-%03d.png",
+                                     g_get_tmp_dir(), ++build);
+        cairo_surface_write_to_png(surface, dump);
+        LS_LOG("blur build #%d: radius=%d/%d at %dpx, source %s -> spread "
+               "B=%d G=%d R=%d, dumped to %s",
+               build, ls_settings.blur_radius / LS_BLUR_DOWNSCALE,
+               ls_settings.blur_radius, small, filename, spread[0], spread[1],
+               spread[2], dump);
+        g_free(dump);
+    }
     return surface;
 }
 
@@ -275,6 +356,28 @@ void ls_artwork_draw(LsArtwork *art, cairo_t *cr, int width, int height) {
     if (art) {
         paint_cover(cr, art->previous, width, height, 1.0 - art->fade);
         paint_cover(cr, art->current, width, height, art->fade);
+    }
+
+    /* Rate-limited to once a second, but fired at once when either
+     * surface is swapped: a cross-fade is over in 620ms, so a purely
+     * periodic report would usually miss the swap it exists to catch. */
+    if (art && blur_debug()) {
+        const gint64 now = g_get_monotonic_time();
+        const int swapped = art->current != art->debug_current ||
+                            art->previous != art->debug_previous;
+        if (swapped || now - art->debug_logged > G_USEC_PER_SEC) {
+            int cur[3], prev[3];
+            surface_spread(art->current, cur);
+            surface_spread(art->previous, prev);
+            LS_LOG("blur draw: panel %dx%d fade=%.3f current=%p spread "
+                   "B=%d G=%d R=%d, previous=%p spread B=%d G=%d R=%d%s",
+                   width, height, art->fade, (void *)art->current, cur[0],
+                   cur[1], cur[2], (void *)art->previous, prev[0], prev[1],
+                   prev[2], swapped ? " (swapped)" : "");
+            art->debug_logged = now;
+            art->debug_current = art->current;
+            art->debug_previous = art->previous;
+        }
     }
 
     /* Scrim, so lyrics stay readable over bright covers. */

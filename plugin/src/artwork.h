@@ -18,6 +18,15 @@ typedef struct {
     gint64 fade_start;
     char *path;  /* the track this was built for */
     int64_t source_id;
+
+    /* LS_DEBUG_BLUR only: what the last draw-time report said, so the
+     * report can be rate-limited and still fire immediately when the
+     * state it describes actually changes. The two surfaces are compared
+     * for identity and never dereferenced — by the time they differ, the
+     * old one has usually been destroyed. */
+    gint64 debug_logged;
+    cairo_surface_t *debug_current;
+    cairo_surface_t *debug_previous;
 } LsArtwork;
 
 /* Ask DeaDBeeF's artwork plugin for this track's cover and build the
