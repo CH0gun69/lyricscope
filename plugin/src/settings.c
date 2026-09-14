@@ -25,6 +25,8 @@ extern DB_functions_t *deadbeef;
 #define KEY_TRANSITION "lyricscope.transition_ms"
 #define KEY_ALIGN "lyricscope.alignment"
 #define KEY_SCROLL_RESUME "lyricscope.scroll_resume_ms"
+#define KEY_SPEC_MODE "lyricscope.spectrum_mode"
+#define KEY_SPEC_GAP "lyricscope.spectrum_gap"
 
 LsSettings ls_settings = {
     .text_px = (int)LS_LINE_PX,
@@ -38,6 +40,10 @@ LsSettings ls_settings = {
     .transition_ms = (int)LS_LINE_TRANSITION_MS,
     .scroll_resume_ms = LS_SCROLL_RESUME_MS,
     .alignment = LS_ALIGN_CENTRE,
+    /* The stock widget's own defaults, so the two panels start out
+     * looking alike rather than needing to be dialled in. */
+    .spectrum_mode = LS_SPEC_OCT24,
+    .spectrum_gap = 4,
 };
 
 static int clamp_int(int value, int low, int high) {
@@ -61,6 +67,17 @@ void ls_settings_load(void) {
         clamp_int(deadbeef->conf_get_int(KEY_ALIGN, LS_ALIGN_CENTRE),
                   LS_ALIGN_LEFT, LS_ALIGN_RIGHT);
 
+    ls_settings.spectrum_mode =
+        clamp_int(deadbeef->conf_get_int(KEY_SPEC_MODE, LS_SPEC_OCT24),
+                  LS_SPEC_DISCRETE, LS_SPEC_OCT12);
+    ls_settings.spectrum_gap =
+        clamp_int(deadbeef->conf_get_int(KEY_SPEC_GAP, 4), 0, 10);
+    /* 1 would mean a gap as wide as the bar itself, which the stock menu
+     * does not offer; the useful range starts at 1/2. */
+    if (ls_settings.spectrum_gap == 1) {
+        ls_settings.spectrum_gap = 2;
+    }
+
     /* conf_get_str, not conf_get_str_fast: the fast one returns a pointer
      * into the config table and is documented as unsafe outside a
      * conf_lock/conf_unlock pair. Copying into our own buffer avoids
@@ -77,6 +94,8 @@ void ls_settings_load(void) {
            ls_settings.accent, ls_settings.blur_radius,
            ls_settings.transition_ms, ls_settings.scroll_resume_ms,
            ls_settings.alignment);
+    LS_LOG("spectrum: mode=%d gap=%d", ls_settings.spectrum_mode,
+           ls_settings.spectrum_gap);
 }
 
 void ls_settings_save(void) {
@@ -87,6 +106,8 @@ void ls_settings_save(void) {
     deadbeef->conf_set_int(KEY_TRANSITION, ls_settings.transition_ms);
     deadbeef->conf_set_int(KEY_SCROLL_RESUME, ls_settings.scroll_resume_ms);
     deadbeef->conf_set_int(KEY_ALIGN, ls_settings.alignment);
+    deadbeef->conf_set_int(KEY_SPEC_MODE, ls_settings.spectrum_mode);
+    deadbeef->conf_set_int(KEY_SPEC_GAP, ls_settings.spectrum_gap);
 
     /* Explicitly, rather than lyricbar's approach of relying on DeaDBeeF
      * flushing the config at exit. That works right up until the player is
