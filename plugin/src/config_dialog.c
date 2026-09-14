@@ -133,6 +133,20 @@ static void on_alignment(GtkComboBox *combo, gpointer data) {
 
 /* -- dialog ------------------------------------------------------------ */
 
+/* The dialog is transient for the player's window, not for the panel, so
+ * destroying the panel leaves it open holding a pointer to freed memory —
+ * and the next spin of any control would apply a setting to a panel that
+ * no longer exists. Detaching rather than closing keeps what the user was
+ * doing: the controls still work and OK still saves, there is simply no
+ * panel left to preview on. */
+void ls_config_dialog_detach(void *user_data) {
+    if (open_dialog && open_dialog->user_data == user_data) {
+        open_dialog->changed = NULL;
+        open_dialog->blur_changed = NULL;
+        open_dialog->user_data = NULL;
+    }
+}
+
 static void on_response(GtkDialog *dialog, gint response, gpointer data) {
     LsConfigDialog *self = data;
 

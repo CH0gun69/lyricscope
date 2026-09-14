@@ -33,6 +33,18 @@ extern DB_functions_t *deadbeef;
 
 static ddb_artwork_plugin_t *artwork_plugin;
 
+/* Which LsArtwork instances are still alive.
+ *
+ * A cover query is answered on the artwork plugin's own thread and handed
+ * to the GTK loop as an idle, so the answer can outlive the panel that
+ * asked for it — and install_backdrop would then write four fields into
+ * freed memory, quietly corrupting whatever the allocator handed out
+ * next. cancel_queries_with_source_id closes most of that window; this
+ * list closes the rest, because an idle that is already queued is past
+ * cancelling. Touched only from the GTK main thread: the queries are
+ * started from it and the idles run on it. */
+static GSList *live_artworks;
+
 void ls_artwork_init(void) {
     /* "artwork2", not "artwork" — the file is artwork.so but the plugin
      * inside it registers under the v2 id, so the obvious guess silently
@@ -248,6 +260,17 @@ static gboolean install_backdrop(gpointer data) {
     LsCoverReady *ready = data;
     LsArtwork *art = ready->art;
 
+    /* The panel that asked for this is gone. Its memory may well have
+     * been handed out again by now, so `art` is not something to write
+     * to, or even to read a flag out of — the list is the only thing
+     * that can still be trusted. */
+    if (!g_slist_find(live_artworks, art)) {
+        LS_LOG("cover arrived for a panel that is gone; dropping it");
+        free(ready->filename);
+        free(ready);
+        return G_SOURCE_REMOVE;
+    }
+
     cairo_surface_t *surface = build_backdrop(ready->filename);
     if (surface) {
         if (art->previous) {
@@ -306,6 +329,17 @@ void ls_artwork_load(LsArtwork *art, DB_playItem_t *track) {
     }
     free(art->path);
     art->path = path;
+
+    /* One source id per panel, allocated on its first load: it is what
+     * makes this panel's queries cancellable as a group when the panel
+     * goes away. Allocation also marks the panel as a live destination
+     * for replies. */
+    if (!g_slist_find(live_artworks, art)) {
+        live_artworks = g_slist_prepend(live_artworks, art);
+        if (artwork_plugin->allocate_source_id) {
+            art->source_id = artwork_plugin->allocate_source_id();
+        }
+    }
 
     ddb_cover_query_t *query = calloc(1, sizeof(ddb_cover_query_t));
     if (!query) {
@@ -419,6 +453,17 @@ void ls_artwork_clear(LsArtwork *art) {
     if (!art) {
         return;
     }
+    /* Before anything is freed: stop the replies that would land in it.
+     * Cancelling first and de-listing second is the order that leaves no
+     * gap — a query cancelled after de-listing would have its reply
+     * dropped anyway, but one still running after the memory is freed is
+     * a write into it. */
+    if (artwork_plugin && art->source_id &&
+        artwork_plugin->cancel_queries_with_source_id) {
+        artwork_plugin->cancel_queries_with_source_id(art->source_id);
+    }
+    live_artworks = g_slist_remove(live_artworks, art);
+
     if (art->current) {
         cairo_surface_destroy(art->current);
     }

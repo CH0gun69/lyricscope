@@ -11,6 +11,12 @@
  * a blur change is the only one that has to throw away and rebuild a
  * cached surface rather than just repaint.
  */
+/* Stop an open dialog calling back into `user_data`, because the panel
+ * it was editing is being destroyed. The dialog itself stays open and
+ * still saves on OK — only the live preview it can no longer reach is
+ * dropped. */
+void ls_config_dialog_detach(void *user_data);
+
 void ls_config_dialog_show(GtkWidget *parent,
                            void (*changed)(void *user_data),
                            void (*blur_changed)(void *user_data),

@@ -176,19 +176,27 @@ static void apply_font(LsPanel *panel) {
     const PangoFontDescription *base =
         pango_context_get_font_description(context);
 
-    if (panel->font) {
-        pango_font_description_free(panel->font);
-    }
-
+    PangoFontDescription *next;
     if (ls_settings.font[0]) {
         /* Whatever the chooser produced: a family plus any style or
          * weight the user picked. That weight is theirs, so nothing is
          * stamped over it here. */
-        panel->font = pango_font_description_from_string(ls_settings.font);
+        next = pango_font_description_from_string(ls_settings.font);
     } else {
-        panel->font = base ? pango_font_description_copy(base)
-                           : pango_font_description_from_string("Sans");
-        pango_font_description_set_weight(panel->font, PANGO_WEIGHT_MEDIUM);
+        next = base ? pango_font_description_copy(base)
+                    : pango_font_description_from_string("Sans");
+        pango_font_description_set_weight(next, PANGO_WEIGHT_MEDIUM);
+    }
+
+    /* Built first, swapped in, and only then is the old one freed. The
+     * obvious order — free, then build — leaves panel->font pointing at
+     * freed memory for the length of the build, and the draw path reads
+     * it on every frame. Nothing should be able to draw in that gap, but
+     * "should" is what the crash in this path was made of. */
+    PangoFontDescription *previous = panel->font;
+    panel->font = next;
+    if (previous) {
+        pango_font_description_free(previous);
     }
 
     apply_text_size(panel); /* stamps the size, invalidates the layouts */
@@ -817,6 +825,10 @@ static void on_size_allocate(GtkWidget *widget, GdkRectangle *alloc,
 
 static void panel_destroy(ddb_gtkui_widget_t *widget) {
     LsPanel *panel = (LsPanel *)widget;
+    /* First, before any of this panel's memory stops being valid: an
+     * open settings dialog holds a pointer to it and would otherwise
+     * keep calling back into it. */
+    ls_config_dialog_detach(panel);
     if (panel->tick_id) {
         gtk_widget_remove_tick_callback(panel->area, panel->tick_id);
         panel->tick_id = 0;
