@@ -23,6 +23,7 @@ typedef struct {
     char accent[16];    /* current line's colour, "#rrggbb" */
     int blur_radius;    /* backdrop blur, at build size; 0 disables it */
     int transition_ms;  /* line expand/shrink duration; easing stays OutCubic */
+    int scroll_resume_ms; /* wait after hand-scrolling before re-syncing; 0 = never */
     int alignment;      /* LS_ALIGN_* */
 } LsSettings;
 

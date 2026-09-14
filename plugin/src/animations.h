@@ -32,6 +32,21 @@
  * pop rather than racing it. */
 #define LS_SCROLL_MS 420.0
 
+/* -- hand scrolling --------------------------------------------------- */
+
+/* One wheel notch moves this many lines. Three is the usual toolkit step
+ * and is what a wheel feels like everywhere else; a touchpad sends
+ * fractions of a notch and lands between these. */
+#define LS_SCROLL_STEP_LINES 3.0
+
+/* How long the panel stays where the user put it before it goes back to
+ * following playback. Long enough to read a verse ahead, short enough
+ * that a stray touchpad brush does not strand the view for the rest of
+ * the song. This is the default; the live value is
+ * ls_settings.scroll_resume_ms, and 0 there means never resume on its
+ * own. */
+#define LS_SCROLL_RESUME_MS 5000
+
 /* -- track change ----------------------------------------------------- */
 
 /* Short enough to read as a swap rather than a transition. Much past
@@ -70,6 +85,15 @@
 #define LS_BLUR_RADIUS_MAX 96
 #define LS_TRANSITION_MS_MIN 0
 #define LS_TRANSITION_MS_MAX 1200
+
+/* 0 is not "instant" here, it is "never" — the one value in this file
+ * whose bottom end turns the behaviour off rather than minimising it. An
+ * instant resume would make scrolling impossible, so it is not offered;
+ * holding the view indefinitely is a real thing to want, so it is. The
+ * top end is half a minute, past which "it came back on its own" stops
+ * being a thing anyone would notice happening. */
+#define LS_SCROLL_RESUME_MS_MIN 0
+#define LS_SCROLL_RESUME_MS_MAX 30000
 
 /* -- easing ----------------------------------------------------------- */
 

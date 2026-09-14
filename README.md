@@ -5,7 +5,8 @@ Linux. It is a native GTK3 plugin, not a separate program: it appears as a
 single tab docked inside the player's own window, alongside the playlist.
 Lyrics come from `.lrc` sidecars, lyrics embedded in a track's tags, or a
 central lyrics folder; the current line is highlighted and scrolls with
-playback, and clicking any line seeks to it. The plugin is C, but it embeds
+playback, clicking any line seeks to it, and scrolling by hand lets you
+read ahead before the panel eases back into sync. The plugin is C, but it embeds
 CPython to reuse a small tested Python backend (`linux/core/`) for finding
 and parsing lyrics — that half already existed and there was nothing to
 gain by retyping it in C.
@@ -111,8 +112,19 @@ will overwrite your changes when it exits.
 ## Using it
 
 - **Click any line** to seek to it.
-- **Right-click → Settings…** for text size, colour, blur, animation speed
-  and alignment. Changes apply live; OK saves, Cancel reverts.
+- **Scroll** with the wheel or a touchpad to read somewhere other than
+  where the song is. This is a temporary detour, not a mode: after the
+  **resume delay** (5s by default) the panel scrolls back to the current
+  line and carries on following playback. Clicking a line ends the detour
+  at once, and so does a track change. Set the delay to `0` to hold your
+  position until one of those happens instead.
+  The highlight keeps moving while you browse — only the view is held —
+  and for synced lyrics you cannot scroll past where playback itself
+  would go. Unsynced lyrics scroll like an ordinary document, which is
+  the only way to read past the first screenful of them.
+- **Right-click → Settings…** for text size, colour, blur, animation
+  speed, resume delay and alignment. Changes apply live; OK saves, Cancel
+  reverts.
 
 Lyrics are searched for in three places, and a *synced* result always beats
 an unsynced one, so a stale plain-text lyrics tag can't mask a timestamped
@@ -136,6 +148,7 @@ with DeaDBeeF closed.
 | `lyricscope.accent` | `#8ab4ff` | Colour of the current line, `#rrggbb`. Past/future lines are deliberately *not* derived from this. |
 | `lyricscope.blur_radius` | `36` | Backdrop blur strength, at build size. `0` leaves the cover art sharp. Range 0–96. |
 | `lyricscope.transition_ms` | `190` | How long a line takes to grow/shrink when it becomes current. Easing is always OutCubic. Range 0–1200. |
+| `lyricscope.scroll_resume_ms` | `5000` | How long the panel stays where you scrolled it before re-syncing to the current line. `0` means never — it holds until you click a line or the track changes. Range 0–30000; the dialog shows it in seconds. |
 | `lyricscope.alignment` | `1` | `0` left, `1` centre, `2` right. |
 | `lyricscope.python_home` | *(unset)* | Directory containing `core/`. Unset means `$XDG_DATA_HOME/lyricscope`. Point it at `<clone>/linux` to run from a checkout without `make install`. |
 

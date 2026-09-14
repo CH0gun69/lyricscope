@@ -23,12 +23,14 @@ extern DB_functions_t *deadbeef;
 #define KEY_BLUR "lyricscope.blur_radius"
 #define KEY_TRANSITION "lyricscope.transition_ms"
 #define KEY_ALIGN "lyricscope.alignment"
+#define KEY_SCROLL_RESUME "lyricscope.scroll_resume_ms"
 
 LsSettings ls_settings = {
     .text_px = (int)LS_LINE_PX,
     .accent = LS_ACCENT_DEFAULT,
     .blur_radius = LS_BLUR_RADIUS,
     .transition_ms = (int)LS_LINE_TRANSITION_MS,
+    .scroll_resume_ms = LS_SCROLL_RESUME_MS,
     .alignment = LS_ALIGN_CENTRE,
 };
 
@@ -46,6 +48,9 @@ void ls_settings_load(void) {
     ls_settings.transition_ms =
         clamp_int(deadbeef->conf_get_int(KEY_TRANSITION, (int)LS_LINE_TRANSITION_MS),
                   LS_TRANSITION_MS_MIN, LS_TRANSITION_MS_MAX);
+    ls_settings.scroll_resume_ms = clamp_int(
+        deadbeef->conf_get_int(KEY_SCROLL_RESUME, LS_SCROLL_RESUME_MS),
+        LS_SCROLL_RESUME_MS_MIN, LS_SCROLL_RESUME_MS_MAX);
     ls_settings.alignment =
         clamp_int(deadbeef->conf_get_int(KEY_ALIGN, LS_ALIGN_CENTRE),
                   LS_ALIGN_LEFT, LS_ALIGN_RIGHT);
@@ -57,9 +62,11 @@ void ls_settings_load(void) {
     deadbeef->conf_get_str(KEY_ACCENT, LS_ACCENT_DEFAULT, ls_settings.accent,
                            sizeof(ls_settings.accent));
 
-    LS_LOG("settings: text=%dpx accent=%s blur=%d transition=%dms align=%d",
+    LS_LOG("settings: text=%dpx accent=%s blur=%d transition=%dms "
+           "scroll_resume=%dms align=%d",
            ls_settings.text_px, ls_settings.accent, ls_settings.blur_radius,
-           ls_settings.transition_ms, ls_settings.alignment);
+           ls_settings.transition_ms, ls_settings.scroll_resume_ms,
+           ls_settings.alignment);
 }
 
 void ls_settings_save(void) {
@@ -67,6 +74,7 @@ void ls_settings_save(void) {
     deadbeef->conf_set_str(KEY_ACCENT, ls_settings.accent);
     deadbeef->conf_set_int(KEY_BLUR, ls_settings.blur_radius);
     deadbeef->conf_set_int(KEY_TRANSITION, ls_settings.transition_ms);
+    deadbeef->conf_set_int(KEY_SCROLL_RESUME, ls_settings.scroll_resume_ms);
     deadbeef->conf_set_int(KEY_ALIGN, ls_settings.alignment);
 
     /* Explicitly, rather than lyricbar's approach of relying on DeaDBeeF

@@ -77,6 +77,12 @@ struct LsPanel {
     double fade;
     gint64 fade_start;
 
+    /* Non-zero while the view is where the user's wheel put it rather
+     * than where playback wants it: the deadline, in µs, after which
+     * auto-follow takes the column back. G_MAXINT64 is "hold it there" —
+     * a resume delay of 0 in the settings means never. */
+    gint64 user_scroll_until;
+
     LsArtwork art;
 
     PangoFontDescription *font;
@@ -119,6 +125,7 @@ static void teardown(LsPanel *panel) {
     panel->current = LS_NO_CURRENT;
     panel->scroll = panel->scroll_from = panel->scroll_to = 0.0;
     panel->scroll_start = 0;
+    panel->user_scroll_until = 0;
     panel->layout_valid = 0;
     g_clear_pointer(&panel->message, free);
 }
@@ -200,6 +207,53 @@ static double scroll_for(LsPanel *panel, int index) {
     return line->y + line->height / 2.0 - alloc.height * LS_FOCUS;
 }
 
+/* How far the column may be scrolled by hand.
+ *
+ * Synced lyrics are bounded by the same two positions auto-follow uses,
+ * so hand-scrolling cannot reach a view playback would never produce —
+ * scroll to the end and the last line sits on the focus line, exactly
+ * where it will be when the song gets there. Unsynced lyrics have no
+ * focus line to speak of, so they behave like an ordinary document:
+ * flush at the top, and the bottom stops when the last line is visible
+ * rather than sailing off the top of the panel. */
+static void scroll_bounds(LsPanel *panel, double *lo, double *hi) {
+    *lo = *hi = 0.0;
+    if (!panel->state || panel->lyrics.count == 0) {
+        return;
+    }
+    if (panel->lyrics.synced) {
+        *lo = scroll_for(panel, 0);
+        *hi = scroll_for(panel, panel->lyrics.count - 1);
+    } else {
+        GtkAllocation alloc;
+        gtk_widget_get_allocation(panel->area, &alloc);
+        const LsLineState *last = &panel->state[panel->lyrics.count - 1];
+        *hi = last->y + last->height + LS_LINE_SPACING - alloc.height;
+    }
+    /* Lyrics shorter than the panel: nowhere to go, and a hi below lo
+     * would otherwise clamp to a negative range and jump the view. */
+    if (*hi < *lo) {
+        *hi = *lo;
+    }
+}
+
+/* (Re)start the countdown that ends a browsing detour. Called on every
+ * wheel event, so the clock is always measured from the last scroll
+ * rather than the first — stepping through a chorus a notch at a time
+ * should not have the view snap back mid-read. */
+static void arm_user_scroll(LsPanel *panel) {
+    panel->user_scroll_until =
+        ls_settings.scroll_resume_ms > 0
+            ? now_us() + (gint64)ls_settings.scroll_resume_ms * 1000
+            : G_MAXINT64;
+}
+
+static double clamp_scroll(LsPanel *panel, double value) {
+    double lo, hi;
+    scroll_bounds(panel, &lo, &hi);
+    return CLAMP(value, lo, hi);
+}
+
 /* -- current line ----------------------------------------------------- */
 
 static void start_scale(LsLineState *line, double target, int animate) {
@@ -242,7 +296,12 @@ static void set_current(LsPanel *panel, int index, int animate) {
     }
 
     const double target = scroll_for(panel, index);
-    if (animate) {
+    if (panel->user_scroll_until) {
+        /* The user is reading somewhere else. The highlight still moves —
+         * they should be able to see the song advancing while they read
+         * ahead — but the column stays put until the resume timer in
+         * on_tick brings it back. */
+    } else if (animate) {
         panel->scroll_from = panel->scroll;
         panel->scroll_to = target;
         panel->scroll_start = now_us();
@@ -473,6 +532,20 @@ static gboolean on_tick(GtkWidget *widget, GdkFrameClock *clock,
     (void)clock;
     LsPanel *panel = user_data;
 
+    /* Hand the column back to playback once the user has stopped
+     * scrolling. Animated rather than snapped: the view is somewhere the
+     * user chose, and having it jump would look like a glitch, whereas a
+     * scroll back reads as the panel catching up. */
+    if (panel->user_scroll_until && now_us() >= panel->user_scroll_until) {
+        panel->user_scroll_until = 0;
+        if (panel->lyrics.synced && panel->current >= 0) {
+            ensure_layout(panel);
+            panel->scroll_from = panel->scroll;
+            panel->scroll_to = scroll_for(panel, panel->current);
+            panel->scroll_start = now_us();
+        }
+    }
+
     /* Position comes from the streamer directly — in-process, no IPC, no
      * polling a subprocess twice a second and interpolating between
      * answers the way the standalone app had to. */
@@ -532,6 +605,10 @@ static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event,
             if (when < 0.0) {
                 return FALSE;
             }
+            /* Picking a line is a decision about where to be, so it ends
+             * the browsing detour immediately instead of leaving the view
+             * pinned for the rest of the resume timer. */
+            panel->user_scroll_until = 0;
             /* Straight to the player: no MPRIS, no gdbus, no int64
              * marshalling trap, no `--` needed to stop a negative offset
              * being parsed as an option. In-process this is one call. */
@@ -543,23 +620,111 @@ static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event,
     return FALSE;
 }
 
+/* -- hand scrolling ---------------------------------------------------- */
+
+/* Wheel and touchpad. The panel follows playback on its own, so this is
+ * for reading somewhere other than where the song is: further down to see
+ * what is coming, back up to re-read a verse. It deliberately does not
+ * latch — after LS_SCROLL_RESUME_MS of no input the view returns to the
+ * current line — because a lyrics panel that silently stopped following
+ * the music would look broken rather than scrolled.
+ *
+ * Unsynced lyrics are the other half of this: they have no current line,
+ * so before this the panel could only ever show the first screenful and
+ * anything past it was unreachable. */
+static gboolean on_scroll(GtkWidget *widget, GdkEventScroll *event,
+                          gpointer user_data) {
+    (void)widget;
+    LsPanel *panel = user_data;
+
+    if (!panel->state || panel->lyrics.count == 0) {
+        return FALSE;
+    }
+    /* The bounds are computed from line positions, which do not exist
+     * until the layouts have been measured at the current width. */
+    ensure_layout(panel);
+
+    double notches = 0.0;
+    switch (event->direction) {
+    case GDK_SCROLL_UP:
+        notches = -1.0;
+        break;
+    case GDK_SCROLL_DOWN:
+        notches = 1.0;
+        break;
+    case GDK_SCROLL_SMOOTH: {
+        double dx = 0.0, dy = 0.0;
+        gdk_event_get_scroll_deltas((GdkEvent *)event, &dx, &dy);
+        notches = dy;
+        break;
+    }
+    default:
+        /* Horizontal: nothing to do, and returning FALSE lets it through
+         * to whatever is outside the panel. */
+        return FALSE;
+    }
+
+    /* A smooth-scroll stream ends with a zero-delta stop event, and
+     * kick-starting the resume timer on that would cost the user a
+     * second of their five for nothing. */
+    if (notches == 0.0) {
+        return TRUE;
+    }
+
+    /* Start from where the column is heading, not where it happens to be
+     * mid-tween: scrolling during the auto-scroll that follows a line
+     * change would otherwise fight it and move less than a notch. */
+    const double base = panel->scroll_start ? panel->scroll_to : panel->scroll;
+    const double step = ls_settings.text_px * LS_SCROLL_STEP_LINES;
+
+    panel->scroll = clamp_scroll(panel, base + notches * step);
+    panel->scroll_from = panel->scroll_to = panel->scroll;
+    panel->scroll_start = 0;
+    arm_user_scroll(panel);
+
+    gtk_widget_queue_draw(panel->area);
+    return TRUE;
+}
+
 /* -- settings ---------------------------------------------------------- */
 
-/* Re-centre without animating after anything that changes line metrics:
+/* Re-settle without animating after anything that changes line metrics:
  * every line moved, so tweening to the new position would read as a
- * scroll the user did not ask for. */
-static void resettle(LsPanel *panel) {
-    if (panel->current >= 0) {
+ * scroll the user did not ask for.
+ *
+ * A hand-scrolled view keeps its place instead of being yanked back to
+ * the current line — resizing the pane while reading ahead should not
+ * undo the reading — but it is re-clamped, because new metrics can make
+ * the column shorter than wherever the old bounds allowed. */
+static void settle(LsPanel *panel) {
+    if (panel->user_scroll_until) {
+        ensure_layout(panel);
+        panel->scroll = panel->scroll_from = panel->scroll_to =
+            clamp_scroll(panel, panel->scroll);
+        panel->scroll_start = 0;
+    } else if (panel->current >= 0) {
         ensure_layout(panel);
         panel->scroll = panel->scroll_to = scroll_for(panel, panel->current);
         panel->scroll_start = 0;
     }
+}
+
+static void resettle(LsPanel *panel) {
+    settle(panel);
     gtk_widget_queue_draw(panel->area);
 }
 
 static void on_settings_changed(void *user_data) {
     LsPanel *panel = user_data;
     apply_text_size(panel); /* also invalidates the cached layouts */
+    /* The dialog applies live, so the delay can change while the view is
+     * already hand-scrolled — typically because the user is sitting in
+     * the settings trying numbers out. Re-arm from now, so the value they
+     * just picked is the one they get to watch, instead of the deadline
+     * the old value set. */
+    if (panel->user_scroll_until) {
+        arm_user_scroll(panel);
+    }
     resettle(panel);
 }
 
@@ -602,13 +767,9 @@ static void on_size_allocate(GtkWidget *widget, GdkRectangle *alloc,
     (void)alloc;
     LsPanel *panel = user_data;
     panel->layout_valid = 0;
-    /* Every line just moved, so re-centre without animating — this fires
+    /* Every line just moved, so re-settle without animating — this fires
      * while the pane divider is being dragged. */
-    if (panel->current >= 0) {
-        ensure_layout(panel);
-        panel->scroll = panel->scroll_to = scroll_for(panel, panel->current);
-        panel->scroll_start = 0;
-    }
+    settle(panel);
 }
 
 /* -- lifecycle -------------------------------------------------------- */
@@ -706,7 +867,12 @@ LsPanel *ls_panel_new(void) {
      * an event it does not want. */
     panel->container = gtk_event_box_new();
     panel->area = gtk_drawing_area_new();
-    gtk_widget_add_events(panel->area, GDK_BUTTON_PRESS_MASK);
+    /* SMOOTH alongside SCROLL: without it a touchpad's fractional deltas
+     * arrive as nothing at all on some drivers, and with it a plain wheel
+     * still delivers ordinary UP/DOWN notches. */
+    gtk_widget_add_events(panel->area, GDK_BUTTON_PRESS_MASK |
+                                           GDK_SCROLL_MASK |
+                                           GDK_SMOOTH_SCROLL_MASK);
     gtk_widget_set_can_focus(panel->area, TRUE);
     gtk_container_add(GTK_CONTAINER(panel->container), panel->area);
 
@@ -740,6 +906,8 @@ LsPanel *ls_panel_new(void) {
     g_signal_connect(panel->area, "draw", G_CALLBACK(on_draw), panel);
     g_signal_connect(panel->area, "button-press-event",
                      G_CALLBACK(on_button_press), panel);
+    g_signal_connect(panel->area, "scroll-event", G_CALLBACK(on_scroll),
+                     panel);
     g_signal_connect(panel->area, "size-allocate",
                      G_CALLBACK(on_size_allocate), panel);
 

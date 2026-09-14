@@ -34,6 +34,7 @@ typedef struct {
     GtkWidget *accent;
     GtkWidget *blur;
     GtkWidget *transition;
+    GtkWidget *scroll_resume;
     GtkWidget *alignment;
 } LsConfigDialog;
 
@@ -82,6 +83,19 @@ static void on_blur(GtkSpinButton *spin, gpointer data) {
 static void on_transition(GtkSpinButton *spin, gpointer data) {
     LsConfigDialog *self = data;
     ls_settings.transition_ms = gtk_spin_button_get_value_as_int(spin);
+    notify(self);
+}
+
+static void on_scroll_resume(GtkSpinButton *spin, gpointer data) {
+    LsConfigDialog *self = data;
+    /* Seconds in the dialog, milliseconds in the config. This is the one
+     * duration the user is asked to think about in the units they would
+     * say it out loud — "three seconds" — rather than in the units the
+     * animation code happens to use. The line animation stays in ms
+     * because a tenth of a second has no natural spoken form and its
+     * whole range is under two. */
+    ls_settings.scroll_resume_ms =
+        (int)(gtk_spin_button_get_value(spin) * 1000.0 + 0.5);
     notify(self);
 }
 
@@ -191,7 +205,21 @@ void ls_config_dialog_show(GtkWidget *parent,
     gtk_widget_set_tooltip_text(self->transition,
                                 "Expand/shrink duration; 0 snaps instantly");
 
-    self->alignment = add_row(grid, 4, "Text alignment:", gtk_combo_box_text_new());
+    self->scroll_resume =
+        add_row(grid, 4, "Resume sync after (s):",
+                gtk_spin_button_new_with_range(
+                    LS_SCROLL_RESUME_MS_MIN / 1000.0,
+                    LS_SCROLL_RESUME_MS_MAX / 1000.0, 0.5));
+    gtk_spin_button_set_digits(GTK_SPIN_BUTTON(self->scroll_resume), 1);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->scroll_resume),
+                              ls_settings.scroll_resume_ms / 1000.0);
+    gtk_widget_set_tooltip_text(
+        self->scroll_resume,
+        "How long the panel stays where you scrolled it before it goes back "
+        "to following the song.\n0 holds it there until you click a line or "
+        "the track changes.");
+
+    self->alignment = add_row(grid, 5, "Text alignment:", gtk_combo_box_text_new());
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(self->alignment), "Left");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(self->alignment), "Centre");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(self->alignment), "Right");
@@ -203,6 +231,8 @@ void ls_config_dialog_show(GtkWidget *parent,
     g_signal_connect(self->blur, "value-changed", G_CALLBACK(on_blur), self);
     g_signal_connect(self->transition, "value-changed",
                      G_CALLBACK(on_transition), self);
+    g_signal_connect(self->scroll_resume, "value-changed",
+                     G_CALLBACK(on_scroll_resume), self);
     g_signal_connect(self->alignment, "changed", G_CALLBACK(on_alignment), self);
     g_signal_connect(self->dialog, "response", G_CALLBACK(on_response), self);
 
