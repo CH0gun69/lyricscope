@@ -121,32 +121,66 @@ static void spectrum_callback(void *ctx, const ddb_audio_data_t *data) {
 
 /* -- bins to bars ------------------------------------------------------ */
 
-/* The level of a band: the loudest bin it covers.
+/* The level of a band, given its edges in fractional bin units.
  *
- * Peak rather than summed energy, decided by measurement rather than by
- * taste. Energy is the textbook way to build an octave band, and it was
- * tried — but measured against the stock widget at matched playback
- * positions it came out consistently *taller* than the stock bars, while
- * peak sits close to them. Summing lifts wide high-frequency bands by
- * roughly 10*log10(bins-in-band), which is over 10dB at the top end, and
- * the stock widget plainly does not do that.
+ * Two regimes, because a band can be wider or narrower than a bin:
+ *
+ * WIDER (the treble): take the loudest bin the band covers. Peak rather
+ * than summed energy, decided by measurement rather than taste. Energy is
+ * the textbook way to build an octave band, and it was tried — but
+ * measured against the stock widget at matched playback positions it came
+ * out consistently taller, because summing lifts wide high-frequency bands
+ * by roughly 10*log10(bins-in-band).
+ *
+ * NARROWER (the bass): interpolate between the two nearest bins at the
+ * band's centre. This is the whole point of taking fractional edges. At
+ * 1/24 octave a band is only 2.9% wide, so below ~184Hz (at 5.4Hz per bin)
+ * several consecutive bands land inside one bin — measured, the first 34
+ * bars resolved to just 7 distinct bins, with 8 bars in a row reading bin
+ * 4. Rounding each to a bin index hands back literally the same number,
+ * which is what drew the bass as blocky steps. Interpolating makes the
+ * value move continuously with the band's centre frequency, so adjacent
+ * bars differ again.
  *
  * Either way this only selects or combines numbers the engine produced;
  * nothing is recomputed from audio. */
-static double bin_peak(const float *bins, int nbins, int lo, int hi) {
-    if (lo < 1) lo = 1;
-    if (hi > nbins) hi = nbins;
-    if (hi <= lo) hi = lo + 1;
-    if (hi > nbins) return 0.0;
+static double band_amplitude(const float *bins, int nbins, double x_lo,
+                             double x_hi) {
+    const double top = nbins - 1.0;
+    if (x_lo < 1.0) x_lo = 1.0;
+    if (x_hi > top) x_hi = top;
+    if (x_hi < x_lo) x_hi = x_lo;
 
-    double peak = 0.0;
-    for (int k = lo; k < hi; k++) {
-        const double v = fabs((double)bins[k]);
-        if (v > peak) {
-            peak = v;
+    if (x_hi - x_lo >= 1.0) {
+        int lo = (int)floor(x_lo);
+        int hi = (int)ceil(x_hi);
+        if (lo < 1) lo = 1;
+        if (hi > nbins) hi = nbins;
+        if (hi <= lo) hi = lo + 1;
+        if (hi > nbins) return 0.0;
+
+        double peak = 0.0;
+        for (int k = lo; k < hi; k++) {
+            const double v = fabs((double)bins[k]);
+            if (v > peak) {
+                peak = v;
+            }
         }
+        return peak;
     }
-    return peak;
+
+    double x = (x_lo + x_hi) * 0.5;
+    if (x < 1.0) x = 1.0;
+    if (x > top) x = top;
+    int i = (int)floor(x);
+    if (i < 1) i = 1;
+    if (i > nbins - 2) i = nbins - 2;
+    if (i < 1) return 0.0;
+
+    const double frac = x - i;
+    const double a = fabs((double)bins[i]);
+    const double b = fabs((double)bins[i + 1]);
+    return a + (b - a) * frac;
 }
 
 static double to_level(double peak) {
@@ -202,6 +236,17 @@ static int compute_bars(LsSpectrum *self, double out[MAX_BARS]) {
     /* Hz per bin: the engine's bins span DC to Nyquist. */
     const double hz_per_bin = nyquist / nbins;
 
+    /* LS_DEBUG_BINS: report which source bin each of the low bars actually
+     * resolves to. Runs of the same index are what a blocky bass looks
+     * like from the inside. Rate-limited; costs nothing when unset. */
+    static int debug_bins = -1;
+    if (debug_bins < 0) {
+        debug_bins = getenv("LS_DEBUG_BINS") ? 1 : 0;
+    }
+    char trace[512];
+    int traced = 0;
+    trace[0] = 0;
+
     int nbars = 0;
     for (int k = 0; nbars < MAX_BARS; k++) {
         const double f_lo = BAND_MIN_HZ * pow(2.0, k / denom);
@@ -209,9 +254,32 @@ static int compute_bars(LsSpectrum *self, double out[MAX_BARS]) {
         if (f_lo >= nyquist) {
             break;
         }
-        int lo = (int)floor(f_lo / hz_per_bin);
-        int hi = (int)ceil(f_hi / hz_per_bin);
-        out[nbars++] = to_level(bin_peak(bins, nbins, lo, hi));
+        /* Fractional, not rounded: the rounding is exactly what flattened
+         * the bass into steps. */
+        const double x_lo = f_lo / hz_per_bin;
+        const double x_hi = f_hi / hz_per_bin;
+        if (debug_bins && nbars < 34) {
+            traced += snprintf(trace + traced, sizeof(trace) - traced, "%.2f ",
+                               (x_lo + x_hi) * 0.5);
+        }
+        out[nbars++] = to_level(band_amplitude(bins, nbins, x_lo, x_hi));
+    }
+
+    if (debug_bins) {
+        static gint64 last = 0;
+        const gint64 now = g_get_monotonic_time();
+        if (now - last > 2000000) {
+            last = now;
+            char levels[1400];
+            int n = 0;
+            levels[0] = 0;
+            for (int i = 0; i < 48 && i < nbars; i++) {
+                n += snprintf(levels + n, sizeof(levels) - n, "%.3f ", out[i]);
+            }
+            LS_LOG("nbins=%d hz_per_bin=%.2f | band centre in bins, bars 0-33: %s",
+                   nbins, hz_per_bin, trace);
+            LS_LOG("  bass bar levels 0-47: %s", levels);
+        }
     }
     return nbars;
 }
