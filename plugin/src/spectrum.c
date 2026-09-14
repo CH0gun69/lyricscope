@@ -330,17 +330,22 @@ static void gradient_stops(const LsSpectrum *self, cairo_pattern_t *pattern) {
         cairo_pattern_add_color_stop_rgba(pattern, 0.0, self->palette.lo[0],
                                           self->palette.lo[1],
                                           self->palette.lo[2], 1.0);
-        cairo_pattern_add_color_stop_rgba(pattern, 0.5, self->palette.mid[0],
+        cairo_pattern_add_color_stop_rgba(pattern, LS_GRAD_MID_STOP,
+                                          self->palette.mid[0],
                                           self->palette.mid[1],
                                           self->palette.mid[2], 1.0);
-        cairo_pattern_add_color_stop_rgba(pattern, 1.0, self->palette.hi[0],
+        /* The last stop, so cairo holds the highlight from here to the top
+         * of the bar rather than continuing to ramp. */
+        cairo_pattern_add_color_stop_rgba(pattern, LS_GRAD_HI_STOP,
+                                          self->palette.hi[0],
                                           self->palette.hi[1],
                                           self->palette.hi[2], 1.0);
         return;
     }
     /* No art yet: the panel's own accent, dimmed at the bottom. */
     cairo_pattern_add_color_stop_rgba(pattern, 0.0, 0.16, 0.20, 0.30, 1.0);
-    cairo_pattern_add_color_stop_rgba(pattern, 1.0, 0.54, 0.71, 1.00, 1.0);
+    cairo_pattern_add_color_stop_rgba(pattern, LS_GRAD_HI_STOP, 0.54, 0.71,
+                                      1.00, 1.0);
 }
 
 /* -- drawing ----------------------------------------------------------- */
