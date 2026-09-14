@@ -20,6 +20,8 @@ enum {
 
 typedef struct {
     int text_px;        /* line size at full scale, in device pixels */
+    char font[128];     /* Pango description minus the size: "Family Style".
+                         * Empty means the theme's own UI font. */
     char accent[16];    /* current line's colour, "#rrggbb" */
     int blur_radius;    /* backdrop blur, at build size; 0 disables it */
     int transition_ms;  /* line expand/shrink duration; easing stays OutCubic */

@@ -156,6 +156,44 @@ static void apply_text_size(LsPanel *panel) {
     panel->layout_valid = 0;
 }
 
+/* Rebuild the panel's one font description from the configured family and
+ * size.
+ *
+ * Family and size stay a single PangoFontDescription rather than a family
+ * here and a size applied somewhere else, because the size is *absolute*:
+ * it is the number the scale transform interpolates around, and a second
+ * path that set a family without re-stamping the size would silently hand
+ * the panel a font measured in points, which the font engine is then free
+ * to round — the exact quantisation this panel is built to avoid. So both
+ * halves go through here, and here always ends by re-applying the size.
+ *
+ * An empty setting means the theme's UI font, which is what the panel
+ * used before any of this was configurable: the setting is an override,
+ * not a replacement, so a user who never opens the dialog sees no change
+ * and a desktop font change still reaches the panel. */
+static void apply_font(LsPanel *panel) {
+    PangoContext *context = gtk_widget_get_pango_context(panel->area);
+    const PangoFontDescription *base =
+        pango_context_get_font_description(context);
+
+    if (panel->font) {
+        pango_font_description_free(panel->font);
+    }
+
+    if (ls_settings.font[0]) {
+        /* Whatever the chooser produced: a family plus any style or
+         * weight the user picked. That weight is theirs, so nothing is
+         * stamped over it here. */
+        panel->font = pango_font_description_from_string(ls_settings.font);
+    } else {
+        panel->font = base ? pango_font_description_copy(base)
+                           : pango_font_description_from_string("Sans");
+        pango_font_description_set_weight(panel->font, PANGO_WEIGHT_MEDIUM);
+    }
+
+    apply_text_size(panel); /* stamps the size, invalidates the layouts */
+}
+
 static void build_layouts(LsPanel *panel, int width) {
     if (!panel->state || panel->lyrics.count == 0) {
         panel->layout_valid = 1;
@@ -716,7 +754,10 @@ static void resettle(LsPanel *panel) {
 
 static void on_settings_changed(void *user_data) {
     LsPanel *panel = user_data;
-    apply_text_size(panel); /* also invalidates the cached layouts */
+    /* Family as well as size: one call, because they are one description
+     * and a live font change has to re-measure every line just as a size
+     * change does. */
+    apply_font(panel);
     /* The dialog applies live, so the delay can change while the view is
      * already hand-scrolled — typically because the user is sitting in
      * the settings trying numbers out. Re-arm from now, so the value they
@@ -897,11 +938,7 @@ LsPanel *ls_panel_new(void) {
     pango_cairo_context_set_font_options(context, options);
     cairo_font_options_destroy(options);
 
-    const PangoFontDescription *base = pango_context_get_font_description(context);
-    panel->font = base ? pango_font_description_copy(base)
-                       : pango_font_description_from_string("Sans");
-    pango_font_description_set_weight(panel->font, PANGO_WEIGHT_MEDIUM);
-    apply_text_size(panel);
+    apply_font(panel);
 
     g_signal_connect(panel->area, "draw", G_CALLBACK(on_draw), panel);
     g_signal_connect(panel->area, "button-press-event",

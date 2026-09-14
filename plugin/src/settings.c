@@ -19,6 +19,7 @@ extern DB_functions_t *deadbeef;
  * kind of key that collides with some future plugin, so nothing here is
  * ever written unprefixed. */
 #define KEY_TEXT_PX "lyricscope.text_px"
+#define KEY_FONT "lyricscope.font"
 #define KEY_ACCENT "lyricscope.accent"
 #define KEY_BLUR "lyricscope.blur_radius"
 #define KEY_TRANSITION "lyricscope.transition_ms"
@@ -27,6 +28,11 @@ extern DB_functions_t *deadbeef;
 
 LsSettings ls_settings = {
     .text_px = (int)LS_LINE_PX,
+    /* Empty on purpose. There is no compiled-in family default to put
+     * here: unset means "whatever the desktop's UI font is", which is a
+     * moving target only fontconfig can answer, and hardcoding a name
+     * like "Sans" would freeze one answer to it. */
+    .font = "",
     .accent = LS_ACCENT_DEFAULT,
     .blur_radius = LS_BLUR_RADIUS,
     .transition_ms = (int)LS_LINE_TRANSITION_MS,
@@ -61,16 +67,21 @@ void ls_settings_load(void) {
      * needing the lock at all. */
     deadbeef->conf_get_str(KEY_ACCENT, LS_ACCENT_DEFAULT, ls_settings.accent,
                            sizeof(ls_settings.accent));
+    deadbeef->conf_get_str(KEY_FONT, "", ls_settings.font,
+                           sizeof(ls_settings.font));
 
-    LS_LOG("settings: text=%dpx accent=%s blur=%d transition=%dms "
+    LS_LOG("settings: text=%dpx font=%s accent=%s blur=%d transition=%dms "
            "scroll_resume=%dms align=%d",
-           ls_settings.text_px, ls_settings.accent, ls_settings.blur_radius,
+           ls_settings.text_px,
+           ls_settings.font[0] ? ls_settings.font : "(theme)",
+           ls_settings.accent, ls_settings.blur_radius,
            ls_settings.transition_ms, ls_settings.scroll_resume_ms,
            ls_settings.alignment);
 }
 
 void ls_settings_save(void) {
     deadbeef->conf_set_int(KEY_TEXT_PX, ls_settings.text_px);
+    deadbeef->conf_set_str(KEY_FONT, ls_settings.font);
     deadbeef->conf_set_str(KEY_ACCENT, ls_settings.accent);
     deadbeef->conf_set_int(KEY_BLUR, ls_settings.blur_radius);
     deadbeef->conf_set_int(KEY_TRANSITION, ls_settings.transition_ms);

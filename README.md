@@ -122,7 +122,7 @@ will overwrite your changes when it exits.
   and for synced lyrics you cannot scroll past where playback itself
   would go. Unsynced lyrics scroll like an ordinary document, which is
   the only way to read past the first screenful of them.
-- **Right-click → Settings…** for text size, colour, blur, animation
+- **Right-click → Settings…** for font, text size, colour, blur, animation
   speed, resume delay and alignment. Changes apply live; OK saves, Cancel
   reverts.
 
@@ -145,6 +145,7 @@ with DeaDBeeF closed.
 | Key | Default | Controls |
 |---|---|---|
 | `lyricscope.text_px` | `26` | Line size at full scale, in **device pixels** (not points — see traps). Range 10–72. |
+| `lyricscope.font` | *(unset)* | Font family and style, as a Pango description without a size (`DejaVu Serif Bold Italic`). Unset means the theme's own UI font. Size is `text_px`, not part of this. |
 | `lyricscope.accent` | `#8ab4ff` | Colour of the current line, `#rrggbb`. Past/future lines are deliberately *not* derived from this. |
 | `lyricscope.blur_radius` | `36` | Backdrop blur strength, at build size. `0` leaves the cover art sharp. Range 0–96. |
 | `lyricscope.transition_ms` | `190` | How long a line takes to grow/shrink when it becomes current. Easing is always OutCubic. Range 0–1200. |

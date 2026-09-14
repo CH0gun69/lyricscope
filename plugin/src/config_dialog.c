@@ -31,6 +31,7 @@ typedef struct {
     void *user_data;
 
     GtkWidget *text_px;
+    GtkWidget *font;
     GtkWidget *accent;
     GtkWidget *blur;
     GtkWidget *transition;
@@ -59,6 +60,28 @@ static void notify_blur(LsConfigDialog *self) {
 static void on_text_px(GtkSpinButton *spin, gpointer data) {
     LsConfigDialog *self = data;
     ls_settings.text_px = gtk_spin_button_get_value_as_int(spin);
+    notify(self);
+}
+
+static void on_font(GtkFontButton *button, gpointer data) {
+    LsConfigDialog *self = data;
+
+    /* The chooser hands back a full description string, and on some
+     * themes that still carries a size even with the size level turned
+     * off. Size is this dialog's own control, in device pixels, so it is
+     * stripped here rather than left to be quietly re-applied later in
+     * points. */
+    PangoFontDescription *desc = pango_font_description_from_string(
+        gtk_font_chooser_get_font(GTK_FONT_CHOOSER(button)));
+    if (!desc) {
+        return;
+    }
+    pango_font_description_unset_fields(desc, PANGO_FONT_MASK_SIZE);
+    char *name = pango_font_description_to_string(desc);
+    g_strlcpy(ls_settings.font, name ? name : "", sizeof(ls_settings.font));
+    g_free(name);
+    pango_font_description_free(desc);
+
     notify(self);
 }
 
@@ -182,22 +205,49 @@ void ls_config_dialog_show(GtkWidget *parent,
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->text_px),
                               ls_settings.text_px);
 
+    /* GtkFontButton, not a bare GtkFontChooserWidget: it is a button that
+     * opens the system font dialog, which is the same shape as the colour
+     * button two rows down and keeps the grid one row per setting. The
+     * list inside it comes from Pango's fontconfig-backed font map, so it
+     * is whatever is actually installed — there is no font enumeration in
+     * this plugin to go stale. */
+    self->font = add_row(grid, 1, "Font:", gtk_font_button_new());
+    gtk_font_chooser_set_level(GTK_FONT_CHOOSER(self->font),
+                               GTK_FONT_CHOOSER_LEVEL_FAMILY |
+                                   GTK_FONT_CHOOSER_LEVEL_STYLE);
+    /* Unset means the theme font, and showing the user a blank button
+     * would tell them nothing about what they are looking at: seed it
+     * with the description the panel is actually rendering with. */
+    if (ls_settings.font[0]) {
+        gtk_font_chooser_set_font(GTK_FONT_CHOOSER(self->font),
+                                  ls_settings.font);
+    } else {
+        PangoContext *context = gtk_widget_get_pango_context(parent);
+        const PangoFontDescription *theme =
+            pango_context_get_font_description(context);
+        if (theme) {
+            gtk_font_chooser_set_font_desc(GTK_FONT_CHOOSER(self->font), theme);
+        }
+    }
+    gtk_widget_set_tooltip_text(self->font,
+                                "Size is set separately, above, in pixels");
+
     GdkRGBA accent;
     if (!gdk_rgba_parse(&accent, ls_settings.accent)) {
         gdk_rgba_parse(&accent, LS_ACCENT_DEFAULT);
     }
-    self->accent = add_row(grid, 1, "Current line colour:",
+    self->accent = add_row(grid, 2, "Current line colour:",
                            gtk_color_button_new_with_rgba(&accent));
     gtk_widget_set_halign(self->accent, GTK_ALIGN_START);
 
     self->blur = add_row(
-        grid, 2, "Backdrop blur:",
+        grid, 3, "Backdrop blur:",
         gtk_spin_button_new_with_range(0, LS_BLUR_RADIUS_MAX, 2));
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->blur),
                               ls_settings.blur_radius);
     gtk_widget_set_tooltip_text(self->blur, "0 leaves the cover art sharp");
 
-    self->transition = add_row(grid, 3, "Line animation (ms):",
+    self->transition = add_row(grid, 4, "Line animation (ms):",
                                gtk_spin_button_new_with_range(
                                    LS_TRANSITION_MS_MIN, LS_TRANSITION_MS_MAX, 10));
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->transition),
@@ -206,7 +256,7 @@ void ls_config_dialog_show(GtkWidget *parent,
                                 "Expand/shrink duration; 0 snaps instantly");
 
     self->scroll_resume =
-        add_row(grid, 4, "Resume sync after (s):",
+        add_row(grid, 5, "Resume sync after (s):",
                 gtk_spin_button_new_with_range(
                     LS_SCROLL_RESUME_MS_MIN / 1000.0,
                     LS_SCROLL_RESUME_MS_MAX / 1000.0, 0.5));
@@ -219,7 +269,7 @@ void ls_config_dialog_show(GtkWidget *parent,
         "to following the song.\n0 holds it there until you click a line or "
         "the track changes.");
 
-    self->alignment = add_row(grid, 5, "Text alignment:", gtk_combo_box_text_new());
+    self->alignment = add_row(grid, 6, "Text alignment:", gtk_combo_box_text_new());
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(self->alignment), "Left");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(self->alignment), "Centre");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(self->alignment), "Right");
@@ -227,6 +277,7 @@ void ls_config_dialog_show(GtkWidget *parent,
                              ls_settings.alignment);
 
     g_signal_connect(self->text_px, "value-changed", G_CALLBACK(on_text_px), self);
+    g_signal_connect(self->font, "font-set", G_CALLBACK(on_font), self);
     g_signal_connect(self->accent, "color-set", G_CALLBACK(on_accent), self);
     g_signal_connect(self->blur, "value-changed", G_CALLBACK(on_blur), self);
     g_signal_connect(self->transition, "value-changed",
